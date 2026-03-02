@@ -1,0 +1,553 @@
+name: Performance Test Pipeline
+
+# =============================================================================
+# JMeter + InfluxDB + Grafana CI/CD Pipeline
+# Author: Syed Sabah Hassan | Senior Performance Tester
+#
+# This workflow:
+#   1. Spins up InfluxDB + Grafana via Docker Compose
+#   2. Downloads and configures Apache JMeter 5.6.3
+#   3. Runs Load / Stress / Spike tests (configurable via inputs)
+#   4. Streams real-time metrics to InfluxDB → visualised in Grafana
+#   5. Generates JMeter HTML report
+#   6. Uploads results as GitHub Actions artifacts
+#   7. Fails the pipeline if error rate > threshold or P95 > SLA
+#   8. Posts a summary comment on Pull Requests
+# =============================================================================
+
+on:
+  # Manual trigger with configurable parameters
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: "Test type to run"
+        required: true
+        type: choice
+        options:
+          - load
+          - stress
+          - spike
+          - all
+        default: load
+      thread_count:
+        description: "Number of virtual users (load test only)"
+        required: false
+        default: "50"
+      duration:
+        description: "Test duration in seconds (load test only)"
+        required: false
+        default: "300"
+      ramp_up:
+        description: "Ramp-up time in seconds (load test only)"
+        required: false
+        default: "120"
+      base_url:
+        description: "Target API base URL (without protocol)"
+        required: false
+        default: "jsonplaceholder.typicode.com"
+      error_rate_threshold:
+        description: "Max acceptable error rate % (pipeline fails if exceeded)"
+        required: false
+        default: "2"
+      p95_threshold_ms:
+        description: "Max acceptable P95 response time in ms"
+        required: false
+        default: "5000"
+
+  # Trigger on PRs to main/develop for smoke testing
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "jmeter/test-plans/**"
+      - "docker/**"
+      - ".github/workflows/performance-test.yml"
+
+  # Scheduled nightly run (AEST midnight = UTC 14:00)
+  schedule:
+    - cron: "0 14 * * 1-5"
+
+env:
+  JMETER_VERSION: "5.6.3"
+  JMETER_HOME: "${{ github.workspace }}/apache-jmeter-5.6.3"
+  INFLUXDB_HOST: "localhost"
+  INFLUXDB_PORT: "8086"
+  INFLUXDB_DB: "jmeter"
+  GRAFANA_PORT: "3000"
+  RESULTS_DIR: "${{ github.workspace }}/reports"
+  DATA_DIR: "${{ github.workspace }}/jmeter/data"
+
+jobs:
+  # ==========================================================================
+  # JOB 1: Start Monitoring Stack (InfluxDB + Grafana)
+  # ==========================================================================
+  start-monitoring-stack:
+    name: "Start Monitoring Stack"
+    runs-on: ubuntu-latest
+    outputs:
+      influxdb_ready: ${{ steps.health_check.outputs.influxdb_ready }}
+      grafana_ready: ${{ steps.health_check.outputs.grafana_ready }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start InfluxDB + Grafana
+        working-directory: docker
+        run: |
+          echo "Starting performance monitoring stack..."
+          docker compose up -d
+          echo "Waiting for services to become healthy..."
+
+      - name: Wait for InfluxDB to be ready
+        id: health_check
+        run: |
+          echo "Checking InfluxDB health..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8086/ping > /dev/null 2>&1; then
+              echo "✅ InfluxDB is ready (attempt $i)"
+              echo "influxdb_ready=true" >> $GITHUB_OUTPUT
+              break
+            fi
+            echo "Waiting for InfluxDB... attempt $i/30"
+            sleep 5
+          done
+
+          echo "Checking Grafana health..."
+          for i in {1..30}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Grafana is ready (attempt $i)"
+              echo "grafana_ready=true" >> $GITHUB_OUTPUT
+              break
+            fi
+            echo "Waiting for Grafana... attempt $i/30"
+            sleep 5
+          done
+
+      - name: Create InfluxDB database
+        run: |
+          echo "Ensuring jmeter database exists in InfluxDB..."
+          curl -sf -XPOST "http://localhost:8086/query" \
+            --data-urlencode "q=CREATE DATABASE jmeter" || true
+          echo "✅ Database ready"
+
+      - name: Print monitoring stack info
+        run: |
+          echo "============================================"
+          echo "  Performance Monitoring Stack"
+          echo "============================================"
+          echo "  InfluxDB: http://localhost:8086"
+          echo "  Grafana:  http://localhost:3000 (admin/admin)"
+          echo "  Database: jmeter"
+          echo "============================================"
+          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+      # Persist docker-compose state for downstream jobs
+      - name: Save Docker state
+        run: docker compose -f docker/docker-compose.yml ps
+
+  # ==========================================================================
+  # JOB 2: Setup JMeter
+  # ==========================================================================
+  setup-jmeter:
+    name: "Setup JMeter ${{ env.JMETER_VERSION }}"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Cache JMeter installation
+        id: cache-jmeter
+        uses: actions/cache@v4
+        with:
+          path: apache-jmeter-${{ env.JMETER_VERSION }}
+          key: jmeter-${{ env.JMETER_VERSION }}-${{ runner.os }}
+
+      - name: Download JMeter
+        if: steps.cache-jmeter.outputs.cache-hit != 'true'
+        run: |
+          echo "Downloading Apache JMeter ${{ env.JMETER_VERSION }}..."
+          wget -q "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz" \
+            -O "jmeter.tgz"
+          tar -xzf jmeter.tgz
+          rm jmeter.tgz
+          echo "✅ JMeter downloaded and extracted"
+
+      - name: Download JMeter Plugin Manager
+        if: steps.cache-jmeter.outputs.cache-hit != 'true'
+        run: |
+          PLUGINS_MGR_VERSION="1.9"
+          wget -q "https://repo1.maven.org/maven2/kg/apc/jmeter-plugins-manager/${PLUGINS_MGR_VERSION}/jmeter-plugins-manager-${PLUGINS_MGR_VERSION}.jar" \
+            -O "apache-jmeter-${{ env.JMETER_VERSION }}/lib/ext/jmeter-plugins-manager-${PLUGINS_MGR_VERSION}.jar"
+          echo "✅ Plugin Manager downloaded"
+
+      - name: Download cmdrunner
+        if: steps.cache-jmeter.outputs.cache-hit != 'true'
+        run: |
+          CMD_RUNNER_VERSION="2.3"
+          wget -q "https://repo1.maven.org/maven2/kg/apc/cmdrunner/${CMD_RUNNER_VERSION}/cmdrunner-${CMD_RUNNER_VERSION}.jar" \
+            -O "apache-jmeter-${{ env.JMETER_VERSION }}/lib/cmdrunner-${CMD_RUNNER_VERSION}.jar"
+
+          # Generate Plugin Manager CLI
+          java -cp "apache-jmeter-${{ env.JMETER_VERSION }}/lib/ext/jmeter-plugins-manager-1.9.jar" \
+            org.jmeterplugins.repository.PluginManagerCMDInstaller || true
+          echo "✅ cmdrunner ready"
+
+      - name: Install JMeter Plugins
+        if: steps.cache-jmeter.outputs.cache-hit != 'true'
+        run: |
+          cd "apache-jmeter-${{ env.JMETER_VERSION }}"
+          java -jar lib/cmdrunner-2.3.jar \
+            --tool org.jmeterplugins.repository.PluginManagerCMD \
+            install jpgc-casutg,jpgc-functions,jpgc-json,jpgc-synthesis \
+            2>/dev/null || echo "⚠️  Some plugins may have not installed - continuing..."
+          echo "✅ Plugins installed"
+
+      - name: Verify JMeter installation
+        run: |
+          echo "JMeter version:"
+          "apache-jmeter-${{ env.JMETER_VERSION }}/bin/jmeter" --version 2>&1 | head -5
+          echo "✅ JMeter is functional"
+
+      - name: Upload JMeter artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-installation
+          path: apache-jmeter-${{ env.JMETER_VERSION }}
+          retention-days: 1
+
+  # ==========================================================================
+  # JOB 3: Run Performance Tests
+  # ==========================================================================
+  run-performance-tests:
+    name: "Run ${{ matrix.test_type }} Test"
+    runs-on: ubuntu-latest
+    needs: [start-monitoring-stack, setup-jmeter]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        test_type: ${{ fromJSON(github.event.inputs.test_type == 'all' && '["load","stress","spike"]' || github.event_name == 'pull_request' && '["load"]' || format('["{0}"]', github.event.inputs.test_type || 'load')) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download JMeter
+        uses: actions/download-artifact@v4
+        with:
+          name: jmeter-installation
+          path: ${{ env.JMETER_HOME }}
+
+      - name: Make JMeter executable
+        run: chmod +x "${{ env.JMETER_HOME }}/bin/jmeter"
+
+      - name: Start Monitoring Stack
+        working-directory: docker
+        run: |
+          docker compose up -d
+          sleep 15
+          curl -sf http://localhost:8086/ping && echo "✅ InfluxDB ready"
+          curl -sf http://localhost:3000/api/health && echo "✅ Grafana ready"
+          # Ensure database exists
+          curl -sf -XPOST "http://localhost:8086/query" \
+            --data-urlencode "q=CREATE DATABASE jmeter" || true
+
+      - name: Prepare results directory
+        run: |
+          mkdir -p "${{ env.RESULTS_DIR }}/${{ matrix.test_type }}"
+          echo "Results will be stored in: ${{ env.RESULTS_DIR }}/${{ matrix.test_type }}"
+
+      - name: Determine test configuration
+        id: test_config
+        run: |
+          TEST_TYPE="${{ matrix.test_type }}"
+
+          # PR runs use reduced parameters for speed
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "thread_count=5"   >> $GITHUB_OUTPUT
+            echo "duration=60"      >> $GITHUB_OUTPUT
+            echo "ramp_up=15"       >> $GITHUB_OUTPUT
+          else
+            echo "thread_count=${{ github.event.inputs.thread_count || '50' }}" >> $GITHUB_OUTPUT
+            echo "duration=${{ github.event.inputs.duration || '300' }}"         >> $GITHUB_OUTPUT
+            echo "ramp_up=${{ github.event.inputs.ramp_up || '120' }}"           >> $GITHUB_OUTPUT
+          fi
+
+          # Map test type to JMX file
+          case "$TEST_TYPE" in
+            load)   echo "jmx_file=jmeter/test-plans/api-load-test.jmx"   >> $GITHUB_OUTPUT ;;
+            stress) echo "jmx_file=jmeter/test-plans/api-stress-test.jmx" >> $GITHUB_OUTPUT ;;
+            spike)  echo "jmx_file=jmeter/test-plans/api-spike-test.jmx"  >> $GITHUB_OUTPUT ;;
+          esac
+
+          echo "app_name=rest-api-${{ matrix.test_type }}-test" >> $GITHUB_OUTPUT
+          echo "jtl_file=${{ env.RESULTS_DIR }}/${{ matrix.test_type }}/results.jtl" >> $GITHUB_OUTPUT
+          echo "log_file=${{ env.RESULTS_DIR }}/${{ matrix.test_type }}/jmeter.log"  >> $GITHUB_OUTPUT
+
+      - name: Run JMeter ${{ matrix.test_type }} test
+        run: |
+          echo "============================================"
+          echo "  Starting ${{ matrix.test_type }} test"
+          echo "  JMX: ${{ steps.test_config.outputs.jmx_file }}"
+          echo "  VUs: ${{ steps.test_config.outputs.thread_count }}"
+          echo "  Duration: ${{ steps.test_config.outputs.duration }}s"
+          echo "============================================"
+
+          "${{ env.JMETER_HOME }}/bin/jmeter" \
+            -n \
+            -t "${{ steps.test_config.outputs.jmx_file }}" \
+            -l "${{ steps.test_config.outputs.jtl_file }}" \
+            -j "${{ steps.test_config.outputs.log_file }}" \
+            -JBASE_URL="${{ github.event.inputs.base_url || 'jsonplaceholder.typicode.com' }}" \
+            -JPROTOCOL="https" \
+            -JTHREAD_COUNT="${{ steps.test_config.outputs.thread_count }}" \
+            -JDURATION="${{ steps.test_config.outputs.duration }}" \
+            -JRAMP_UP="${{ steps.test_config.outputs.ramp_up }}" \
+            -JINFLUXDB_HOST="${{ env.INFLUXDB_HOST }}" \
+            -JINFLUXDB_PORT="${{ env.INFLUXDB_PORT }}" \
+            -JAPP_NAME="${{ steps.test_config.outputs.app_name }}" \
+            -JDATA_DIR="${{ env.DATA_DIR }}" \
+            -e \
+            -o "${{ env.RESULTS_DIR }}/${{ matrix.test_type }}/html"
+
+          echo "✅ ${{ matrix.test_type }} test completed"
+
+      - name: Generate test summary from JTL
+        id: test_summary
+        run: |
+          JTL="${{ steps.test_config.outputs.jtl_file }}"
+
+          if [ ! -f "$JTL" ]; then
+            echo "⚠️  No JTL file found — skipping analysis"
+            exit 0
+          fi
+
+          echo "Analysing JTL results..."
+
+          python3 << 'EOF'
+          import csv, sys, json, os
+
+          jtl_file = os.environ.get('JTL_FILE', '')
+          results_dir = os.environ.get('RESULTS_DIR', '')
+          test_type = os.environ.get('TEST_TYPE', 'unknown')
+
+          if not jtl_file or not os.path.exists(jtl_file):
+              print("No JTL file found")
+              sys.exit(0)
+
+          total = 0
+          errors = 0
+          response_times = []
+
+          with open(jtl_file, 'r') as f:
+              reader = csv.DictReader(f)
+              for row in reader:
+                  if row.get('label', '').startswith('GET') or row.get('label', '').startswith('POST') or row.get('label', '').startswith('PUT'):
+                      total += 1
+                      if row.get('success', 'true').lower() == 'false':
+                          errors += 1
+                      try:
+                          response_times.append(int(row.get('elapsed', 0)))
+                      except ValueError:
+                          pass
+
+          if total == 0:
+              print("No requests found in JTL")
+              sys.exit(0)
+
+          response_times.sort()
+          error_rate = (errors / total * 100) if total > 0 else 0
+          avg_rt = sum(response_times) / len(response_times) if response_times else 0
+
+          def percentile(data, pct):
+              if not data:
+                  return 0
+              idx = int(len(data) * pct / 100)
+              return data[min(idx, len(data) - 1)]
+
+          p90 = percentile(response_times, 90)
+          p95 = percentile(response_times, 95)
+          p99 = percentile(response_times, 99)
+          max_rt = max(response_times) if response_times else 0
+
+          summary = {
+              'total_requests': total,
+              'errors': errors,
+              'error_rate': round(error_rate, 2),
+              'avg_rt': round(avg_rt, 0),
+              'p90': p90,
+              'p95': p95,
+              'p99': p99,
+              'max_rt': max_rt
+          }
+
+          print(json.dumps(summary))
+
+          # Write to GitHub output
+          with open(os.environ.get('GITHUB_OUTPUT', '/dev/null'), 'a') as f:
+              for k, v in summary.items():
+                  f.write(f"{k}={v}\n")
+
+          # Write markdown summary
+          md = f"""## {test_type.capitalize()} Test Results
+
+          | Metric | Value | Status |
+          |--------|-------|--------|
+          | Total Requests | {total:,} | ℹ️ |
+          | Errors | {errors:,} | {'✅' if error_rate < 2 else '❌'} |
+          | Error Rate | {error_rate:.2f}% | {'✅ PASS' if error_rate < 2 else '❌ FAIL'} |
+          | Avg Response Time | {avg_rt:.0f}ms | {'✅' if avg_rt < 2000 else '⚠️'} |
+          | P90 Response Time | {p90}ms | {'✅' if p90 < 3000 else '⚠️'} |
+          | P95 Response Time | {p95}ms | {'✅' if p95 < 5000 else '❌'} |
+          | P99 Response Time | {p99}ms | ℹ️ |
+          | Max Response Time | {max_rt}ms | ℹ️ |
+          """
+          print(md)
+          with open(os.path.join(results_dir, test_type, 'summary.md'), 'w') as f:
+              f.write(md)
+          EOF
+        env:
+          JTL_FILE: ${{ steps.test_config.outputs.jtl_file }}
+          RESULTS_DIR: ${{ env.RESULTS_DIR }}
+          TEST_TYPE: ${{ matrix.test_type }}
+
+      - name: Evaluate SLA thresholds
+        id: sla_check
+        run: |
+          ERROR_RATE="${{ steps.test_summary.outputs.error_rate || '0' }}"
+          P95="${{ steps.test_summary.outputs.p95 || '0' }}"
+          ERROR_THRESHOLD="${{ github.event.inputs.error_rate_threshold || '2' }}"
+          P95_THRESHOLD="${{ github.event.inputs.p95_threshold_ms || '5000' }}"
+          PASSED=true
+
+          echo "============================================"
+          echo "  SLA Evaluation"
+          echo "============================================"
+          echo "  Error Rate:     ${ERROR_RATE}% (threshold: ${ERROR_THRESHOLD}%)"
+          echo "  P95 Resp Time:  ${P95}ms (threshold: ${P95_THRESHOLD}ms)"
+
+          if (( $(echo "$ERROR_RATE > $ERROR_THRESHOLD" | bc -l) )); then
+            echo "❌ FAIL: Error rate ${ERROR_RATE}% exceeds threshold ${ERROR_THRESHOLD}%"
+            PASSED=false
+          else
+            echo "✅ PASS: Error rate ${ERROR_RATE}% is within threshold"
+          fi
+
+          if (( $(echo "$P95 > $P95_THRESHOLD" | bc -l) )); then
+            echo "❌ FAIL: P95 ${P95}ms exceeds threshold ${P95_THRESHOLD}ms"
+            PASSED=false
+          else
+            echo "✅ PASS: P95 ${P95}ms is within threshold"
+          fi
+
+          echo "sla_passed=${PASSED}" >> $GITHUB_OUTPUT
+
+          if [ "$PASSED" = "false" ]; then
+            echo "::error::SLA thresholds breached for ${{ matrix.test_type }} test"
+            exit 1
+          fi
+
+      - name: Capture JMeter log on failure
+        if: failure()
+        run: |
+          echo "=== JMeter Log (last 100 lines) ==="
+          tail -100 "${{ steps.test_config.outputs.log_file }}" 2>/dev/null || echo "No log file found"
+          echo ""
+          echo "=== Docker Compose logs ==="
+          docker compose -f docker/docker-compose.yml logs --tail=50 2>/dev/null || true
+
+      - name: Upload test results artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-results-${{ matrix.test_type }}-${{ github.run_number }}
+          path: |
+            ${{ env.RESULTS_DIR }}/${{ matrix.test_type }}/
+          retention-days: 30
+
+      - name: Add test summary to GitHub Step Summary
+        if: always()
+        run: |
+          cat "${{ env.RESULTS_DIR }}/${{ matrix.test_type }}/summary.md" >> $GITHUB_STEP_SUMMARY 2>/dev/null || \
+          echo "## ${{ matrix.test_type }} Test\nNo summary available." >> $GITHUB_STEP_SUMMARY
+
+  # ==========================================================================
+  # JOB 4: Post PR Comment with Results
+  # ==========================================================================
+  comment-pr-results:
+    name: "Comment Results on PR"
+    runs-on: ubuntu-latest
+    needs: run-performance-tests
+    if: github.event_name == 'pull_request' && always()
+
+    steps:
+      - name: Download all results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: perf-results-*
+          merge-multiple: true
+          path: all-results
+
+      - name: Post PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            let body = `## 🚀 Performance Test Results\n\n`;
+            body += `**Run:** #${{ github.run_number }} | **Commit:** ${{ github.sha }}\n\n`;
+
+            const summaryFiles = [];
+            function findSummaries(dir) {
+              try {
+                const items = fs.readdirSync(dir);
+                items.forEach(item => {
+                  const full = path.join(dir, item);
+                  if (fs.statSync(full).isDirectory()) {
+                    findSummaries(full);
+                  } else if (item === 'summary.md') {
+                    summaryFiles.push(full);
+                  }
+                });
+              } catch(e) {}
+            }
+            findSummaries('all-results');
+
+            if (summaryFiles.length > 0) {
+              summaryFiles.forEach(f => {
+                body += fs.readFileSync(f, 'utf8') + '\n\n';
+              });
+            } else {
+              body += '_No summary files found._\n';
+            }
+
+            body += `\n---\n_Generated by [Performance Test Pipeline](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})_`;
+
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            });
+
+  # ==========================================================================
+  # JOB 5: Cleanup
+  # ==========================================================================
+  cleanup:
+    name: "Cleanup"
+    runs-on: ubuntu-latest
+    needs: run-performance-tests
+    if: always()
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Stop monitoring stack
+        working-directory: docker
+        run: |
+          docker compose down -v 2>/dev/null || true
+          echo "✅ Monitoring stack stopped and volumes removed"

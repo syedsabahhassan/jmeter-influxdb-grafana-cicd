@@ -1,0 +1,133 @@
+name: Smoke Performance Test
+
+# =============================================================================
+# Lightweight smoke performance test — runs on every push to feature branches.
+# Quick sanity check: 5 VUs, 60s duration, just the load test plan.
+# =============================================================================
+
+on:
+  push:
+    branches:
+      - "feature/**"
+      - "bugfix/**"
+    paths:
+      - "jmeter/test-plans/**"
+      - "jmeter/data/**"
+
+env:
+  JMETER_VERSION: "5.6.3"
+  JMETER_HOME: "${{ github.workspace }}/apache-jmeter-5.6.3"
+  RESULTS_DIR: "${{ github.workspace }}/reports/smoke"
+
+jobs:
+  smoke-test:
+    name: "Smoke Test (5 VUs / 60s)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Cache JMeter installation
+        id: cache-jmeter
+        uses: actions/cache@v4
+        with:
+          path: apache-jmeter-${{ env.JMETER_VERSION }}
+          key: jmeter-${{ env.JMETER_VERSION }}-${{ runner.os }}
+
+      - name: Download JMeter (if not cached)
+        if: steps.cache-jmeter.outputs.cache-hit != 'true'
+        run: |
+          wget -q "https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${{ env.JMETER_VERSION }}.tgz" -O jmeter.tgz
+          tar -xzf jmeter.tgz && rm jmeter.tgz
+          chmod +x "apache-jmeter-${{ env.JMETER_VERSION }}/bin/jmeter"
+
+      - name: Start InfluxDB (metrics collection)
+        working-directory: docker
+        run: |
+          docker compose up -d influxdb
+          sleep 10
+          curl -sf http://localhost:8086/ping && echo "InfluxDB ready"
+          curl -sf -XPOST "http://localhost:8086/query" --data-urlencode "q=CREATE DATABASE jmeter"
+
+      - name: Create results directory
+        run: mkdir -p "${{ env.RESULTS_DIR }}"
+
+      - name: Run smoke test
+        run: |
+          chmod +x "${{ env.JMETER_HOME }}/bin/jmeter"
+          "${{ env.JMETER_HOME }}/bin/jmeter" \
+            -n \
+            -t "jmeter/test-plans/api-load-test.jmx" \
+            -l "${{ env.RESULTS_DIR }}/smoke.jtl" \
+            -j "${{ env.RESULTS_DIR }}/jmeter.log" \
+            -JBASE_URL="jsonplaceholder.typicode.com" \
+            -JPROTOCOL="https" \
+            -JTHREAD_COUNT="5" \
+            -JDURATION="60" \
+            -JRAMP_UP="10" \
+            -JINFLUXDB_HOST="localhost" \
+            -JINFLUXDB_PORT="8086" \
+            -JAPP_NAME="rest-api-smoke" \
+            -JDATA_DIR="jmeter/data" \
+            -e \
+            -o "${{ env.RESULTS_DIR }}/html"
+
+      - name: Quick SLA check
+        run: |
+          python3 << 'EOF'
+          import csv, sys
+
+          jtl = "reports/smoke/smoke.jtl"
+          try:
+              total, errors, rts = 0, 0, []
+              with open(jtl) as f:
+                  for row in csv.DictReader(f):
+                      total += 1
+                      if row.get('success','').lower() == 'false':
+                          errors += 1
+                      try:
+                          rts.append(int(row.get('elapsed', 0)))
+                      except:
+                          pass
+
+              if total == 0:
+                  print("No samples found")
+                  sys.exit(0)
+
+              error_rate = errors / total * 100
+              rts.sort()
+              p95 = rts[int(len(rts) * 0.95)] if rts else 0
+
+              print(f"Total: {total} | Errors: {errors} | Error Rate: {error_rate:.1f}% | P95: {p95}ms")
+
+              failed = False
+              if error_rate > 5:
+                  print(f"FAIL: error rate {error_rate:.1f}% > 5%")
+                  failed = True
+              if p95 > 10000:
+                  print(f"FAIL: P95 {p95}ms > 10000ms")
+                  failed = True
+
+              if failed:
+                  sys.exit(1)
+              else:
+                  print("PASS: Smoke test SLAs met")
+          except FileNotFoundError:
+              print("No JTL file")
+              sys.exit(1)
+          EOF
+
+      - name: Upload smoke test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-results-${{ github.run_number }}
+          path: reports/smoke/
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        working-directory: docker
+        run: docker compose down -v 2>/dev/null || true

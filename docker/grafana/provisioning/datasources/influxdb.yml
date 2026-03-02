@@ -1,0 +1,17 @@
+apiVersion: 1
+
+# Grafana datasource provisioning
+# Automatically configures InfluxDB as the default datasource on startup.
+
+datasources:
+  - name: InfluxDB-JMeter
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    database: jmeter
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMode: GET
+      keepCookies: []
+    version: 1

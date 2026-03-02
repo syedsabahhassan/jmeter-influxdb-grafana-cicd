@@ -1,0 +1,25 @@
+# JMeter results (uploaded as CI artifacts)
+reports/*.jtl
+reports/*/
+!reports/.gitkeep
+
+# JMeter temp files
+jmeter.log
+*.log
+
+# JMeter installation (downloaded by CI)
+apache-jmeter-*/
+
+# Docker volumes / env overrides
+docker/.env
+docker/grafana/data/
+docker/influxdb/data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.iml
