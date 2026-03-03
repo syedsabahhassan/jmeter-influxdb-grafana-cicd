@@ -376,8 +376,8 @@ Every endpoint includes layered assertions:
 
 This repository demonstrates the following capabilities from my professional background:
 
-- **NAB (2019–present):** Built JMeter + K6 test suites for Enterprise Lending Platform; Docker + InfluxDB + Grafana monitoring; Splunk and CloudWatch log analysis
-- **ASB Bank (2016–2018):** Set up JMeter CI/CD pipeline with Octopus/Jenkins; InfluxDB + Grafana real-time monitoring; Docker for portable monitoring stacks
+-  Built JMeter + K6 test suites for Enterprise Lending Platform; Docker + InfluxDB + Grafana monitoring; Splunk and CloudWatch log analysis
+- Set up JMeter CI/CD pipeline with Octopus/Jenkins; InfluxDB + Grafana real-time monitoring; Docker for portable monitoring stacks
 - **Performance tooling:** JMeter, K6, Gatling, LoadRunner — comparative analysis and production implementations
 - **Banking domain expertise:** CBA, NAB, ANZ — performance testing in regulated, high-availability environments
 
