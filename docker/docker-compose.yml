@@ -1,5 +1,3 @@
-version: "3.8"
-
 # =============================================================================
 # Performance Monitoring Stack: InfluxDB 1.8 + Grafana
 # Author: Syed Sabah Hassan | Senior Performance Tester
@@ -21,6 +19,7 @@ services:
   # ---------------------------------------------------------------------------
   influxdb:
     image: influxdb:1.8-alpine
+    platform: linux/amd64      # InfluxDB 1.8 has no ARM64 image; Rosetta 2 handles this on Apple Silicon
     container_name: perf_influxdb
     restart: unless-stopped
     ports:
