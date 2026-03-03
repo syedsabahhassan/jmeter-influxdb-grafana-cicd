@@ -37,11 +37,11 @@ services:
       - influxdb_data:/var/lib/influxdb
       - ./influxdb/influxdb.conf:/etc/influxdb/influxdb.conf:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8086/ping || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 20s
+      retries: 10
+      start_period: 30s
     networks:
       - perf_net
 
