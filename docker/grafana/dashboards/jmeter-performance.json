@@ -30,7 +30,7 @@
         "type": "dashboard"
       },
       {
-        "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+        "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
         "enable": true,
         "hide": false,
         "iconColor": "orange",
@@ -58,7 +58,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+      "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -87,7 +87,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT last(\"count\") / 60 FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time(60s) fill(null)",
           "rawQuery": true,
           "refId": "A",
@@ -98,7 +98,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+      "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -128,7 +128,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT last(\"avg\") FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time(60s) fill(null)",
           "rawQuery": true,
           "refId": "A",
@@ -139,7 +139,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+      "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -168,7 +168,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT last(\"pct95.0\") FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time(60s) fill(null)",
           "rawQuery": true,
           "refId": "A",
@@ -179,7 +179,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+      "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -208,7 +208,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT (last(\"failed\") / (last(\"failed\") + last(\"count\"))) * 100 FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time(60s) fill(null)",
           "rawQuery": true,
           "refId": "A",
@@ -219,7 +219,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+      "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -248,7 +248,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT last(\"maxAT\") FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'internal' AND $timeFilter GROUP BY time(60s) fill(null)",
           "rawQuery": true,
           "refId": "A",
@@ -259,7 +259,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+      "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -285,7 +285,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT sum(\"count\") FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter",
           "rawQuery": true,
           "refId": "A",
@@ -303,7 +303,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+      "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -350,7 +350,7 @@
       "targets": [
         {
           "alias": "Avg Response Time",
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT mean(\"avg\") FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time($interval) fill(null)",
           "rawQuery": true,
           "refId": "A",
@@ -358,7 +358,7 @@
         },
         {
           "alias": "P90",
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT mean(\"pct90.0\") FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time($interval) fill(null)",
           "rawQuery": true,
           "refId": "B",
@@ -366,7 +366,7 @@
         },
         {
           "alias": "P95",
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT mean(\"pct95.0\") FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time($interval) fill(null)",
           "rawQuery": true,
           "refId": "C",
@@ -374,7 +374,7 @@
         },
         {
           "alias": "P99",
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT mean(\"pct99.0\") FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time($interval) fill(null)",
           "rawQuery": true,
           "refId": "D",
@@ -382,7 +382,7 @@
         },
         {
           "alias": "Max",
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT max(\"max\") FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time($interval) fill(null)",
           "rawQuery": true,
           "refId": "E",
@@ -393,7 +393,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+      "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -424,7 +424,7 @@
       "targets": [
         {
           "alias": "P95 Response Time",
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT last(\"pct95.0\") FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time($interval) fill(null)",
           "rawQuery": true,
           "refId": "A",
@@ -442,7 +442,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+      "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -483,7 +483,7 @@
       "targets": [
         {
           "alias": "Throughput (req/s)",
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT sum(\"count\") / 60 FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time($interval) fill(null)",
           "rawQuery": true,
           "refId": "A",
@@ -491,7 +491,7 @@
         },
         {
           "alias": "Error Rate %",
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT (sum(\"failed\") / (sum(\"failed\") + sum(\"count\"))) * 100 FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'all' AND $timeFilter GROUP BY time($interval) fill(null)",
           "rawQuery": true,
           "refId": "B",
@@ -502,7 +502,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+      "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -527,7 +527,7 @@
       "targets": [
         {
           "alias": "Active VUs",
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT last(\"maxAT\") FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction = 'internal' AND $timeFilter GROUP BY time($interval) fill(null)",
           "rawQuery": true,
           "refId": "A",
@@ -545,7 +545,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+      "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -632,7 +632,7 @@
       "pluginVersion": "10.2.0",
       "targets": [
         {
-          "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+          "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
           "query": "SELECT mean(\"avg\") AS \"Avg RT (ms)\", max(\"pct95.0\") AS \"P95 (ms)\", max(\"pct99.0\") AS \"P99 (ms)\", max(\"max\") AS \"Max RT (ms)\", sum(\"count\") AS \"Total Requests\", (sum(\"failed\") / (sum(\"failed\") + sum(\"count\"))) * 100 AS \"Error %\" FROM \"jmeter\" WHERE application =~ /^$application$/ AND transaction != 'all' AND transaction != 'internal' AND $timeFilter GROUP BY transaction",
           "rawQuery": true,
           "refId": "A",
@@ -660,7 +660,7 @@
     "list": [
       {
         "current": {},
-        "datasource": { "type": "influxdb", "uid": "${DS_INFLUXDB_JMETER}" },
+        "datasource": { "type": "influxdb", "uid": "influxdb-jmeter" },
         "definition": "SHOW TAG VALUES FROM \"jmeter\" WITH KEY = \"application\"",
         "hide": 0,
         "includeAll": false,
