@@ -6,7 +6,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue?logo=docker)](https://docs.docker.com/compose/)
 
 > **Author:** Syed Sabah Hassan — Test Automation Architect
-> **Experience:** 18+ years | Federal Sector and Banking domain (CBA, NAB, ANZ) | JMeter, K6, Gatling, Grafana
+> **Experience:** 18+ years | Federal Sector and Banking domain ( Services Australia, NAB, ASB [CBA], ANZ) | JMeter, K6, Gatling, Grafana
 > **Contact:** sabahcomp@gmail.com
 
 A **production-grade performance testing pipeline** demonstrating real-time metrics streaming from Apache JMeter into InfluxDB, visualised live in Grafana — all wired together in a GitHub Actions CI/CD workflow.
