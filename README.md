@@ -9,7 +9,7 @@
 > **Experience:** 18+ years | Federal Sector and Banking domain ( Services Australia, NAB, ASB [CBA], ANZ) | JMeter, K6, Gatling, Grafana
 > **Contact:** sabahcomp@gmail.com
 
-A **production-grade performance testing pipeline** demonstrating real-time metrics streaming from Apache JMeter into InfluxDB, visualised live in Grafana — all wired together in a GitHub Actions CI/CD workflow.
+A **portfolio-grade performance testing pipeline** demonstrating real-time metrics streaming from Apache JMeter into InfluxDB, visualised live in Grafana — all wired together in a GitHub Actions CI/CD workflow.
 
 ---
 
