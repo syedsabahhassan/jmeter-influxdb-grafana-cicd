@@ -379,7 +379,7 @@ This repository demonstrates the following capabilities from my professional bac
 -  Built JMeter + K6 test suites for Enterprise Lending Platform; Docker + InfluxDB + Grafana monitoring; Splunk and CloudWatch log analysis
 - Set up JMeter CI/CD pipeline with Octopus/Jenkins; InfluxDB + Grafana real-time monitoring; Docker for portable monitoring stacks
 - **Performance tooling:** JMeter, K6, Gatling, LoadRunner — comparative analysis and production implementations
-- **Banking domain expertise:** CBA, NAB, ANZ — performance testing in regulated, high-availability environments
+- **Banking domain expertise:** NAB,ASB (CBA) and ANZ — performance testing in regulated, high-availability environments
 
 ---
 
