@@ -78,79 +78,7 @@ env:
 
 jobs:
   # ==========================================================================
-  # JOB 1: Start Monitoring Stack (InfluxDB + Grafana)
-  # ==========================================================================
-  start-monitoring-stack:
-    name: "Start Monitoring Stack"
-    runs-on: ubuntu-latest
-    outputs:
-      influxdb_ready: ${{ steps.health_check.outputs.influxdb_ready }}
-      grafana_ready: ${{ steps.health_check.outputs.grafana_ready }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Start InfluxDB + Grafana
-        working-directory: docker
-        run: |
-          echo "Starting performance monitoring stack..."
-          docker compose up -d
-          echo "Waiting for services to become healthy..."
-
-      - name: Wait for InfluxDB to be ready
-        id: health_check
-        run: |
-          echo "Checking InfluxDB health..."
-          for i in {1..30}; do
-            if curl -sf http://localhost:8086/ping > /dev/null 2>&1; then
-              echo "✅ InfluxDB is ready (attempt $i)"
-              echo "influxdb_ready=true" >> $GITHUB_OUTPUT
-              break
-            fi
-            echo "Waiting for InfluxDB... attempt $i/30"
-            sleep 5
-          done
-
-          echo "Checking Grafana health..."
-          for i in {1..30}; do
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✅ Grafana is ready (attempt $i)"
-              echo "grafana_ready=true" >> $GITHUB_OUTPUT
-              break
-            fi
-            echo "Waiting for Grafana... attempt $i/30"
-            sleep 5
-          done
-
-      - name: Create InfluxDB database
-        run: |
-          echo "Ensuring jmeter database exists in InfluxDB..."
-          curl -sf -XPOST "http://localhost:8086/query" \
-            --data-urlencode "q=CREATE DATABASE jmeter" || true
-          echo "✅ Database ready"
-
-      - name: Print monitoring stack info
-        run: |
-          echo "============================================"
-          echo "  Performance Monitoring Stack"
-          echo "============================================"
-          echo "  InfluxDB: http://localhost:8086"
-          echo "  Grafana:  http://localhost:3000 (admin/admin)"
-          echo "  Database: jmeter"
-          echo "============================================"
-          docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-      # Persist docker-compose state for downstream jobs
-      - name: Save Docker state
-        run: docker compose -f docker/docker-compose.yml ps
-
-  # ==========================================================================
-  # JOB 2: Setup JMeter
+  # JOB 1: Setup JMeter
   # ==========================================================================
   setup-jmeter:
     name: "Setup JMeter 5.6.3"
@@ -223,7 +151,7 @@ jobs:
   run-performance-tests:
     name: "Run ${{ matrix.test_type }} Test"
     runs-on: ubuntu-latest
-    needs: [start-monitoring-stack, setup-jmeter]
+    needs: [setup-jmeter]
 
     strategy:
       fail-fast: false
@@ -247,10 +175,30 @@ jobs:
         working-directory: docker
         run: |
           docker compose up -d
-          sleep 15
-          curl -sf http://localhost:8086/ping && echo "✅ InfluxDB ready"
-          curl -sf http://localhost:3000/api/health && echo "✅ Grafana ready"
-          # Ensure database exists
+
+          echo "Waiting for InfluxDB to be healthy..."
+          for i in {1..36}; do
+            if curl -sf http://localhost:8086/ping > /dev/null 2>&1; then
+              echo "✅ InfluxDB ready (attempt $i)"
+              break
+            fi
+            [ "$i" -eq 36 ] && echo "❌ InfluxDB did not start in time" && exit 1
+            echo "  attempt $i/36 — retrying in 5s..."
+            sleep 5
+          done
+
+          echo "Waiting for Grafana to be healthy..."
+          for i in {1..24}; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Grafana ready (attempt $i)"
+              break
+            fi
+            [ "$i" -eq 24 ] && echo "❌ Grafana did not start in time" && exit 1
+            echo "  attempt $i/24 — retrying in 5s..."
+            sleep 5
+          done
+
           curl -sf -XPOST "http://localhost:8086/query" \
             --data-urlencode "q=CREATE DATABASE jmeter" || true
 
@@ -473,6 +421,11 @@ jobs:
           cat "${{ env.RESULTS_DIR }}/${{ matrix.test_type }}/summary.md" >> $GITHUB_STEP_SUMMARY 2>/dev/null || \
           echo "## ${{ matrix.test_type }} Test\nNo summary available." >> $GITHUB_STEP_SUMMARY
 
+      - name: Stop monitoring stack
+        if: always()
+        working-directory: docker
+        run: docker compose down -v 2>/dev/null || true
+
   # ==========================================================================
   # JOB 4: Post PR Comment with Results
   # ==========================================================================
@@ -533,21 +486,3 @@ jobs:
               body: body
             });
 
-  # ==========================================================================
-  # JOB 5: Cleanup
-  # ==========================================================================
-  cleanup:
-    name: "Cleanup"
-    runs-on: ubuntu-latest
-    needs: run-performance-tests
-    if: always()
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Stop monitoring stack
-        working-directory: docker
-        run: |
-          docker compose down -v 2>/dev/null || true
-          echo "✅ Monitoring stack stopped and volumes removed"

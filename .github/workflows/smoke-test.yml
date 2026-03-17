@@ -47,9 +47,20 @@ jobs:
         working-directory: docker
         run: |
           docker compose up -d influxdb
-          sleep 10
-          curl -sf http://localhost:8086/ping && echo "InfluxDB ready"
-          curl -sf -XPOST "http://localhost:8086/query" --data-urlencode "q=CREATE DATABASE jmeter"
+
+          echo "Waiting for InfluxDB to be healthy..."
+          for i in {1..36}; do
+            if curl -sf http://localhost:8086/ping > /dev/null 2>&1; then
+              echo "✅ InfluxDB ready (attempt $i)"
+              break
+            fi
+            [ "$i" -eq 36 ] && echo "❌ InfluxDB did not start in time" && exit 1
+            echo "  attempt $i/36 — retrying in 5s..."
+            sleep 5
+          done
+
+          curl -sf -XPOST "http://localhost:8086/query" \
+            --data-urlencode "q=CREATE DATABASE jmeter" || true
 
       - name: Create results directory
         run: mkdir -p "${{ env.RESULTS_DIR }}"
