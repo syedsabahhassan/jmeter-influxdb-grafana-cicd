@@ -5,11 +5,9 @@
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-black?logo=github-actions)](https://github.com/features/actions)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue?logo=docker)](https://docs.docker.com/compose/)
 
-> **Author:** Syed Sabah Hassan — Test Automation Architect
-> **Experience:** 18+ years | Federal Sector and Banking domain ( Services Australia, NAB, ASB [CBA], ANZ) | JMeter, K6, Gatling, Grafana
-> **Contact:** sabahcomp@gmail.com
-
 A **portfolio-grade performance testing pipeline** demonstrating real-time metrics streaming from Apache JMeter into InfluxDB, visualised live in Grafana — all wired together in a GitHub Actions CI/CD workflow.
+
+**Target API:** [JSONPlaceholder](https://jsonplaceholder.typicode.com) (public mock REST API — swap for your own via `--url`).
 
 ---
 
@@ -141,6 +139,8 @@ Tests elasticity and recovery from sudden traffic surges.
 ---
 
 ## Quick Start (Local)
+
+> ⚠️ **Local demo only.** The Docker stack runs with `INFLUXDB_HTTP_AUTH_ENABLED=false` and Grafana anonymous viewer access enabled — intentional for zero-friction local use. Do **not** expose ports 3000 or 8086 to the internet in this configuration.
 
 ### Prerequisites
 
@@ -328,37 +328,23 @@ Every endpoint includes layered assertions:
 
 1. **HTTP Status Assertion** — `200 OK` or `201 Created`
 2. **Duration Assertion** — per-endpoint SLA (e.g., GET < 1500ms, POST < 3000ms)
-3. **JSON Path Assertion** — validates response schema (e.g., `$[0].id` exists)
-4. **JSON Path Extractor** — extracts values for request chaining (e.g., `createdPostId`)
+3. **Response Assertion** — validates response body contains expected field (e.g., `"id"`)
+4. **Regex Extractor** — extracts values for request chaining (e.g., `"id":\s*(\d+)` → `createdPostId`)
 
 ---
 
-## Performance Test Strategy
+## SLA Thresholds
 
-### Non-functional Requirements (NFRs)
+The pipeline enforces two hard gates — the build fails if either is breached:
 
-| Metric | Threshold | Test Type |
-|--------|-----------|-----------|
-| Error Rate | < 2% | All |
-| Avg Response Time | < 2000ms | Load |
-| P90 Response Time | < 3000ms | Load |
-| P95 Response Time | < 5000ms | Load, Stress |
-| Max Response Time | < 10000ms | Load |
-| Throughput (min) | Baseline × 0.9 | Regression |
+| Metric | Threshold | Where enforced |
+|--------|-----------|----------------|
+| Error Rate | < 2% | `performance-test.yml` + `generate-report.sh` |
+| P95 Response Time | < 5000ms | `performance-test.yml` + `generate-report.sh` |
 
-### Entry Criteria
+Smoke tests use relaxed thresholds (error rate < 5%, P95 < 10 000ms) to avoid false positives on quick sanity runs.
 
-- Application deployed to performance environment
-- Monitoring stack (InfluxDB + Grafana) running
-- Test data loaded and validated
-- Performance environment isolated from functional test traffic
-
-### Exit Criteria
-
-- All NFRs met for the agreed load profile
-- No memory leaks observed over soak duration
-- Error rate stabilises below threshold post-spike
-- Performance test report reviewed and signed off
+These values target the public [JSONPlaceholder](https://jsonplaceholder.typicode.com) API. When pointing at your own service, tune them via the `error_rate_threshold` and `p95_threshold_ms` workflow inputs, or the `--threads` / `--duration` flags locally.
 
 ---
 
@@ -372,17 +358,13 @@ Every endpoint includes layered assertions:
 
 ---
 
-## Related Skills & Experience
-
-This repository demonstrates the following capabilities from my professional background:
-
--  Built JMeter + K6 test suites for Enterprise Lending Platform; Docker + InfluxDB + Grafana monitoring; Splunk and CloudWatch log analysis
-- Set up JMeter CI/CD pipeline with Octopus/Jenkins; InfluxDB + Grafana real-time monitoring; Docker for portable monitoring stacks
-- **Performance tooling:** JMeter, K6, Gatling, LoadRunner — comparative analysis and production implementations
-- **Banking domain expertise:** NAB,ASB (CBA) and ANZ — performance testing in regulated, high-availability environments
-
----
-
 ## License
 
 MIT — free to use, adapt, and extend.
+
+---
+
+> **Author:** Syed Sabah Hassan — Test Automation Architect
+> 18+ years in performance engineering across Federal Government and Banking (Services Australia, NAB, ASB [CBA], ANZ).
+> Tools: JMeter · K6 · Gatling · Grafana · InfluxDB · Docker · GitHub Actions
+> sabahcomp@gmail.com

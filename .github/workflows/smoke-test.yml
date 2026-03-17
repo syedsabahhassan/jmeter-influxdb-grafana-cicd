@@ -79,7 +79,7 @@ jobs:
           python3 << 'EOF'
           import csv, sys
 
-          jtl = "reports/smoke/smoke.jtl"
+          jtl = "${{ env.RESULTS_DIR }}/smoke.jtl"
           try:
               total, errors, rts = 0, 0, []
               with open(jtl) as f:
