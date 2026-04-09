@@ -1,234 +1,147 @@
-# JMeter + InfluxDB + Grafana CI/CD Pipeline
+# JMeter + InfluxDB + Grafana — CI/CD Performance Testing Reference
 
-[![Performance Tests](https://img.shields.io/badge/Performance%20Tests-JMeter%205.6.3-orange?logo=apache)](https://jmeter.apache.org/)
-[![Monitoring](https://img.shields.io/badge/Monitoring-InfluxDB%201.8%20%2B%20Grafana%2010-blue?logo=grafana)](https://grafana.com/)
-[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-black?logo=github-actions)](https://github.com/features/actions)
+[![JMeter](https://img.shields.io/badge/JMeter-5.6.3-orange?logo=apache)](https://jmeter.apache.org/)
+[![InfluxDB](https://img.shields.io/badge/InfluxDB-1.8-blue)](https://www.influxdata.com/)
+[![Grafana](https://img.shields.io/badge/Grafana-10.2-orange?logo=grafana)](https://grafana.com/)
+[![GitHub Actions](https://img.shields.io/badge/CI-GitHub%20Actions-black?logo=github-actions)](https://github.com/features/actions)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue?logo=docker)](https://docs.docker.com/compose/)
 
-A **portfolio-grade performance testing pipeline** demonstrating real-time metrics streaming from Apache JMeter into InfluxDB, visualised live in Grafana — all wired together in a GitHub Actions CI/CD workflow.
+JMeter performance tests running inside GitHub Actions, with metrics streaming live to InfluxDB and Grafana during execution. Includes load, stress, and spike scenarios, SLA gates that fail the build, HTML reports as artifacts, and a Docker Compose monitoring stack you can start locally in one command.
 
-**Target API:** [JSONPlaceholder](https://jsonplaceholder.typicode.com) (public mock REST API — swap for your own via `--url`).
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    GitHub Actions Pipeline                       │
-│                                                                  │
-│  ┌──────────────┐     ┌──────────────┐     ┌──────────────────┐ │
-│  │  JMeter 5.6.3 │────▶│  InfluxDB 1.8│────▶│  Grafana 10.2    │ │
-│  │              │     │  (jmeter db) │     │  (Dashboard)     │ │
-│  │  Load Test   │     │              │     │                  │ │
-│  │  Stress Test │     │  Time-series │     │  Real-time       │ │
-│  │  Spike Test  │     │  metrics     │     │  charts, SLA     │ │
-│  └──────────────┘     └──────────────┘     │  gauges, tables  │ │
-│         │                                  └──────────────────┘ │
-│         │ .jtl results                                          │
-│         ▼                                                        │
-│  ┌──────────────┐     ┌──────────────────────────────────────┐  │
-│  │  HTML Report │     │  SLA Threshold Check                 │  │
-│  │  (artifact)  │     │  Error Rate < 2% | P95 < 5000ms     │  │
-│  └──────────────┘     │  ❌ Fails pipeline if breached        │  │
-│                        └──────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Tech Stack
-
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| Load Generator | Apache JMeter 5.6.3 | Virtual user simulation, HTTP requests, assertions |
-| Metrics Store | InfluxDB 1.8 | Time-series storage for real-time metrics streaming |
-| Visualisation | Grafana 10.2 | Live dashboards: throughput, response times, error rates |
-| Containerisation | Docker Compose | Reproducible monitoring stack, no manual installs |
-| CI/CD | GitHub Actions | Automated test execution, SLA validation, PR feedback |
-| Scripting | Bash + Python 3 | Test orchestration, JTL analysis, Markdown reporting |
+The target API is [JSONPlaceholder](https://jsonplaceholder.typicode.com) — a public mock. This is a reference implementation for the tooling and wiring, not a live load-testing engagement.
 
 ---
 
-## Repository Structure
+## What this demonstrates
+
+- Load, stress, and spike test plans written in JMeter (JMX)
+- Real-time metrics streaming via JMeter's built-in InfluxDB Backend Listener
+- A pre-provisioned Grafana dashboard that loads automatically on stack start
+- GitHub Actions pipeline with manual trigger, PR trigger, and nightly schedule
+- SLA gates that fail the pipeline when error rate or P95 response time exceed thresholds
+- JMeter HTML report generated per run and uploaded as a CI artifact
+- Docker Compose setup for InfluxDB + Grafana — no manual config required
+
+---
+
+## How it works
+
+```
+JMeter (test run)
+    │
+    ├── streams metrics in real time ──▶ InfluxDB 1.8 ──▶ Grafana dashboard
+    │
+    └── writes .jtl results file
+            │
+            ├── JMeter HTML report (generated post-run)
+            └── Python SLA check (error rate + P95 threshold)
+                    │
+                    └── fails the GitHub Actions build if breached
+```
+
+---
+
+## Repository structure
 
 ```
 jmeter-influxdb-grafana-cicd/
 │
 ├── .github/workflows/
-│   ├── performance-test.yml      ← Main pipeline (load/stress/spike, manual + scheduled)
-│   └── smoke-test.yml            ← Quick sanity test on feature branch pushes
+│   ├── performance-test.yml     # main pipeline — load/stress/spike, manual + scheduled
+│   └── smoke-test.yml           # lightweight sanity check on feature branch pushes
 │
 ├── jmeter/
 │   ├── test-plans/
-│   │   ├── api-load-test.jmx     ← 50 VUs, 5 min sustained load (3 thread groups)
-│   │   ├── api-stress-test.jmx   ← Step load: 10→50→100 VUs (breaking point)
-│   │   └── api-spike-test.jmx    ← Baseline→150 VU spike→recovery test
-│   ├── data/
-│   │   └── test-data.csv         ← Parameterised test data (postId, userId, title, body)
-│   └── plugins/
-│       └── PLUGINS.md            ← Plugin installation guide
+│   │   ├── api-load-test.jmx    # 50 VUs, 5 min sustained
+│   │   ├── api-stress-test.jmx  # step load: 10 → 50 → 100 VUs
+│   │   └── api-spike-test.jmx   # baseline → 150 VU spike → recovery
+│   └── data/
+│       └── test-data.csv        # parameterised request data (postId, userId, etc.)
 │
 ├── docker/
-│   ├── docker-compose.yml        ← InfluxDB 1.8 + Grafana 10.2 stack
-│   ├── influxdb/
-│   │   └── influxdb.conf         ← InfluxDB configuration
+│   ├── docker-compose.yml       # InfluxDB 1.8 + Grafana 10.2
 │   └── grafana/
-│       ├── provisioning/
-│       │   ├── datasources/      ← Auto-configure InfluxDB datasource
-│       │   └── dashboards/       ← Auto-load dashboard on startup
+│       ├── provisioning/        # auto-configured datasource + dashboard loader
 │       └── dashboards/
-│           └── jmeter-performance.json  ← Pre-built Grafana dashboard
+│           └── jmeter-performance.json
 │
 ├── scripts/
-│   ├── setup-monitoring.sh       ← Start/stop/restart InfluxDB + Grafana locally
-│   ├── run-tests.sh              ← Run tests locally with full parameterisation
-│   └── generate-report.sh       ← Generate HTML + Markdown reports from .jtl
+│   ├── setup-monitoring.sh      # start/stop Docker stack locally
+│   ├── run-tests.sh             # run any test type locally with full options
+│   └── generate-report.sh       # produce HTML + Markdown summary from a .jtl file
 │
-├── reports/                      ← Test results (gitignored, uploaded as CI artifacts)
-└── README.md
+└── reports/                     # gitignored — created at runtime, uploaded as CI artifacts
 ```
 
 ---
 
-## Test Scenarios
+## Running locally
 
-### Load Test (`api-load-test.jmx`)
+**Prerequisites:** Docker Desktop, JMeter 5.6.3, Bash
 
-Validates steady-state performance under expected production load.
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| VUs | 50 | Virtual users (configurable via `THREAD_COUNT`) |
-| Ramp-up | 120s | Time to reach full load |
-| Steady duration | 300s | Sustained load period |
-| Workload mix | 50% GET / 30% POST-PUT / 20% Search | Realistic traffic distribution |
-
-**SLA thresholds:** Error rate < 2% \| P95 < 5000ms
-
-**API endpoints tested:**
-- `GET /posts` — list all posts
-- `GET /posts/{id}` — get single post (with JSON extraction for chaining)
-- `GET /users/{userId}/posts` — user-scoped query
-- `POST /posts` — create new resource (JSON body from CSV)
-- `PUT /posts/{id}` — update resource
-- `GET /posts/{id}/comments` — nested resource query
-
-### Stress Test (`api-stress-test.jmx`)
-
-Identifies the system's breaking point via step-load escalation.
-
-| Step | VUs | Duration |
-|------|-----|----------|
-| 1 | 10 | 60s |
-| 2 | 50 | 60s |
-| 3 | 100 | 60s |
-
-**Observation:** Where does P95 degrade beyond 5s? Where does error rate exceed 1%?
-
-### Spike Test (`api-spike-test.jmx`)
-
-Tests elasticity and recovery from sudden traffic surges.
-
-| Phase | VUs | Duration |
-|-------|-----|----------|
-| Baseline | 10 | 60s |
-| **Spike** | **150** | **60s** |
-| Recovery | 10 | 60s |
-
-**Observation:** Does the system recover to baseline response times post-spike?
-
----
-
-## Quick Start (Local)
-
-> ⚠️ **Local demo only.** The Docker stack runs with `INFLUXDB_HTTP_AUTH_ENABLED=false` and Grafana anonymous viewer access enabled — intentional for zero-friction local use. Do **not** expose ports 3000 or 8086 to the internet in this configuration.
-
-### Prerequisites
-
-- Docker Desktop (for monitoring stack)
-- Apache JMeter 5.6.3 (or use the download scripts)
-- Bash (macOS/Linux) or Git Bash (Windows)
-
-### 1. Start the Monitoring Stack
+> The Docker stack runs with auth disabled and Grafana anonymous access on — intentional for local use. Don't expose ports 3000 or 8086 publicly in this config.
 
 ```bash
+# 1. Start InfluxDB + Grafana
 ./scripts/setup-monitoring.sh
-```
 
-- **Grafana:** http://localhost:3000 (admin / admin)
-- **InfluxDB:** http://localhost:8086
-- Dashboard auto-loads: **JMeter Performance Dashboard**
+# Grafana:  http://localhost:3000  (admin / admin)
+# InfluxDB: http://localhost:8086
 
-### 2. Run a Test
-
-```bash
-# Load test with defaults (50 VUs, 5 min)
-./scripts/run-tests.sh --type load
-
-# Stress test with custom VU count
-./scripts/run-tests.sh --type stress --threads 100
-
-# Spike test
+# 2. Run a test
+./scripts/run-tests.sh --type load              # 50 VUs, 5 min, default target
+./scripts/run-tests.sh --type stress
 ./scripts/run-tests.sh --type spike
+./scripts/run-tests.sh --type all               # runs all three in sequence
 
-# All three tests in sequence
-./scripts/run-tests.sh --type all
+# Point at your own API:
+./scripts/run-tests.sh --type load --url api.myapp.com --threads 25 --duration 120
 
-# Against a different target (e.g. your own API)
-./scripts/run-tests.sh --type load --url api.myapp.com --protocol https --threads 25 --duration 120
-```
-
-### 3. View Results in Grafana
-
-1. Open http://localhost:3000
-2. Navigate to: **Performance Testing → JMeter Performance Dashboard**
-3. Select your application from the **Application** dropdown
-4. Watch metrics update in real-time during the test run
-
-### 4. Generate an HTML Report
-
-```bash
+# 3. Generate an HTML report from results
 ./scripts/generate-report.sh --jtl reports/load_20241201_143000.jtl
-# HTML report opens at: reports/load_20241201_143000_html/index.html
-# Markdown summary at:  reports/load_20241201_143000_html/summary.md
 ```
 
 ---
 
-## CI/CD Pipeline (GitHub Actions)
+## Test scenarios
 
-### Trigger Methods
+| Test | VUs | Duration | Intent |
+|------|-----|----------|--------|
+| Load | 50 | 5 min (120s ramp) | Steady-state behaviour under expected load |
+| Stress | 10 → 50 → 100 | 60s per step | Find the point where the system degrades |
+| Spike | 10 → 150 → 10 | 60s each phase | Check recovery after a sudden surge |
+| Smoke | 5 | 60s | Quick sanity check on feature branch pushes |
 
-| Trigger | Behaviour |
+Each test plan covers six JSONPlaceholder endpoints across GET, POST, and PUT operations. Requests are parameterised from CSV and chained where relevant (extracted IDs reused in subsequent requests).
+
+**Assertions per request:**
+- HTTP status code (200 / 201)
+- Response time duration (per-endpoint limit)
+- Response body contains expected field
+
+---
+
+## CI/CD pipeline
+
+The main workflow (`performance-test.yml`) supports three trigger modes:
+
+| Trigger | What runs |
 |---------|-----------|
-| `workflow_dispatch` | Manual run — choose test type, VU count, duration, URL, SLA thresholds |
-| Pull Request to `main`/`develop` | Auto-runs load test at 5 VUs / 60s, posts results as PR comment |
-| Schedule (`0 14 * * 1-5`) | Nightly AEST run, Monday–Friday |
-| Push to `feature/**` | Smoke test (5 VUs / 60s) via `smoke-test.yml` |
+| `workflow_dispatch` | Manual — pick test type, VU count, duration, target URL, SLA thresholds |
+| Pull request to `main`/`develop` | Load test at 5 VUs / 60s, result posted as PR comment |
+| Schedule (`0 14 * * 1-5`) | Nightly run, weekdays (AEST midnight) |
 
-### Pipeline Jobs
+**Jobs:**
 
-```
-start-monitoring-stack
-    │ (Docker Compose: InfluxDB + Grafana)
-    ▼
-setup-jmeter
-    │ (Download + cache JMeter 5.6.3, install plugins)
-    ▼
-run-performance-tests
-    │ (Matrix: load / stress / spike)
-    │ (JMeter → InfluxDB real-time streaming)
-    │ (HTML report generation)
-    │ (SLA evaluation → fails pipeline if breached)
-    ▼
-comment-pr-results          cleanup
-    │ (Posts Markdown         │ (docker compose down -v)
-    │  table to PR)           │
-    ▼                         ▼
-```
+1. **Setup JMeter** — downloads and caches JMeter 5.6.3 and plugins
+2. **Run tests** — starts the Docker monitoring stack, executes the selected test(s), checks SLAs, generates report, uploads artifacts
+3. **Comment PR** — posts a Markdown results summary on pull requests (PR trigger only)
 
-### Manual Trigger (workflow_dispatch)
+Artifacts are retained for 30 days: `perf-results-{type}-{run_number}/` contains the JTL file, HTML report, and a Markdown summary.
 
-Navigate to **Actions → Performance Test Pipeline → Run workflow** and configure:
+### Manual trigger inputs
+
+Navigate to **Actions → Performance Test Pipeline → Run workflow**:
 
 | Input | Default | Notes |
 |-------|---------|-------|
@@ -237,134 +150,67 @@ Navigate to **Actions → Performance Test Pipeline → Run workflow** and confi
 | `duration` | `300` | Seconds |
 | `ramp_up` | `120` | Seconds |
 | `base_url` | `jsonplaceholder.typicode.com` | Target host (no protocol) |
-| `error_rate_threshold` | `2` | % — pipeline fails if exceeded |
-| `p95_threshold_ms` | `5000` | ms — pipeline fails if P95 exceeds |
-
-### Artifacts
-
-Test results are uploaded as GitHub Actions artifacts and retained for 30 days:
-
-- `perf-results-load-{run_number}/` — JTL, HTML report, Markdown summary
-- `perf-results-stress-{run_number}/`
-- `perf-results-spike-{run_number}/`
+| `error_rate_threshold` | `2` | % — build fails if exceeded |
+| `p95_threshold_ms` | `5000` | ms — build fails if P95 exceeds |
 
 ---
 
-## Grafana Dashboard
+## Monitoring and dashboards
 
-The pre-provisioned dashboard (`docker/grafana/dashboards/jmeter-performance.json`) includes:
+The Grafana dashboard provisions automatically when the stack starts — no manual import.
 
-| Panel | Type | Description |
-|-------|------|-------------|
-| Throughput (req/s) | Stat | Current request rate, colour-coded |
-| Avg Response Time | Stat | Live average with green/yellow/red thresholds |
-| P95 Response Time | Stat | 95th percentile response time |
-| Error Rate % | Stat | Live error rate with SLA colouring |
-| Active VUs | Stat | Current virtual user count |
-| Total Requests | Stat | Cumulative count |
-| Response Time Percentiles | Time Series | Avg, P90, P95, P99, Max over time |
-| P95 SLA Gauge | Gauge | Visual threshold gauge (< 5s = green) |
-| Throughput vs Error Rate | Time Series | Dual-axis: req/s + error% |
-| Active VUs Over Time | Time Series | Concurrency profile |
-| Transaction Breakdown | Table | Per-endpoint summary with SLA colouring |
+**Panels include:** throughput (req/s), average and P95 response time, error rate, active VU count, response time percentile trends over time, per-transaction breakdown table, and a P95 SLA gauge.
 
-**Variables:**
-- `application` — filter by test name (auto-populated from InfluxDB)
-- `interval` — auto / 10s / 30s / 1m / 5m
+Filter by test run using the `application` dropdown — it's populated from InfluxDB once a test is writing data.
+
+Metrics are written by JMeter's built-in `InfluxdbBackendListenerClient` (available since JMeter 3.3, no extra plugin needed).
 
 ---
 
-## JMeter InfluxDB Backend Listener
+## SLA checks
 
-The tests use JMeter's **built-in** `InfluxdbBackendListenerClient` (no plugin required from JMeter 3.3+):
+Two pipeline gates enforced after each test run:
 
-```xml
-<BackendListener ...>
-  <influxdbUrl>http://localhost:8086/write?db=jmeter</influxdbUrl>
-  <application>rest-api-load-test</application>
-  <measurement>jmeter</measurement>
-  <percentiles>90;95;99</percentiles>
-  <summaryOnly>false</summaryOnly>
-  <samplersRegex>.*</samplersRegex>
-</BackendListener>
-```
+| Metric | Threshold |
+|--------|-----------|
+| Error rate | < 2% |
+| P95 response time | < 5 000ms |
 
-**InfluxDB schema (measurement: `jmeter`):**
+The build fails if either is breached. Smoke tests use looser thresholds (5% / 10 000ms) to avoid noise on short runs.
 
-| Tag | Description |
-|-----|-------------|
-| `application` | Test/app name |
-| `transaction` | Sampler label or `all`/`internal` |
-| `statut` | `ok` or `ko` |
-
-| Field | Description |
-|-------|-------------|
-| `avg`, `min`, `max` | Response time statistics |
-| `pct90.0`, `pct95.0`, `pct99.0` | Percentiles |
-| `count`, `failed` | Request counts |
-| `maxAT`, `minAT`, `meanAT` | Active thread counts |
+Thresholds are configurable per run via `workflow_dispatch` inputs, or locally via the scripts.
 
 ---
 
-## Test Data Parameterisation
+## Limitations
 
-Tests are data-driven using `jmeter/data/test-data.csv`:
-
-```
-postId,userId,title,body
-1,1,"sunt aut facere...","quia et suscipit..."
-...
-```
-
-- CSV is loaded with `CSVDataSet` in `shareMode.all` (shared across all threads)
-- Recycles when all rows are consumed — no thread will ever exhaust data
-- Variables: `${postId}`, `${userId}`, `${title}`, `${body}`
+- **Target is a public mock API.** JSONPlaceholder responds consistently and never degrades, which makes it a weak load target. This repo is about the pipeline setup, not meaningful performance findings.
+- **InfluxDB 1.8.** Uses v1 specifically to match JMeter's built-in Backend Listener configuration. Migrating to InfluxDB v2 would require switching to the Flux query language and updating both the listener config and the Grafana datasource.
+- **Auth is disabled.** The Docker stack runs without InfluxDB auth and with Grafana anonymous viewer access — fine for local use, not appropriate for any shared environment.
+- **Grafana is not visible in CI.** The monitoring stack starts inside the GitHub Actions runner. There's no persistent or external Grafana instance — dashboards only update during local runs.
 
 ---
 
-## Assertions & Validations
+## Adapting for your own project
 
-Every endpoint includes layered assertions:
-
-1. **HTTP Status Assertion** — `200 OK` or `201 Created`
-2. **Duration Assertion** — per-endpoint SLA (e.g., GET < 1500ms, POST < 3000ms)
-3. **Response Assertion** — validates response body contains expected field (e.g., `"id"`)
-4. **Regex Extractor** — extracts values for request chaining (e.g., `"id":\s*(\d+)` → `createdPostId`)
-
----
-
-## SLA Thresholds
-
-The pipeline enforces two hard gates — the build fails if either is breached:
-
-| Metric | Threshold | Where enforced |
-|--------|-----------|----------------|
-| Error Rate | < 2% | `performance-test.yml` + `generate-report.sh` |
-| P95 Response Time | < 5000ms | `performance-test.yml` + `generate-report.sh` |
-
-Smoke tests use relaxed thresholds (error rate < 5%, P95 < 10 000ms) to avoid false positives on quick sanity runs.
-
-These values target the public [JSONPlaceholder](https://jsonplaceholder.typicode.com) API. When pointing at your own service, tune them via the `error_rate_threshold` and `p95_threshold_ms` workflow inputs, or the `--threads` / `--duration` flags locally.
+1. Replace the HTTP samplers in the JMX files with your own endpoints
+2. Swap `jmeter/data/test-data.csv` for data that matches your domain
+3. Set `base_url` (CI) or `--url` (local scripts) to your target
+4. Tune per-endpoint `DurationAssertion` values and the pipeline SLA thresholds
+5. Update or replace the Grafana dashboard panels as needed
 
 ---
 
-## Adapting for Your Own API
+## Possible next steps
 
-1. **Update test plans** — change the HTTP sampler paths and assertions to match your API
-2. **Update test data** — replace `jmeter/data/test-data.csv` with your domain data
-3. **Set the target URL** — via `--url` flag locally or `base_url` input in CI
-4. **Adjust SLA thresholds** — update `DurationAssertion` values in JMX files and CI inputs
-5. **Extend the Grafana dashboard** — add panels for your specific transactions
-
----
-
-## License
-
-MIT — free to use, adapt, and extend.
+- Add a CI badge once the pipeline is consistently green
+- Migrate InfluxDB to v2 and update queries to Flux
+- Replace the duplicated inline SLA logic with a shared script
+- Add distributed JMeter mode (controller + remote injectors) for genuine high-load scenarios
+- Store a baseline result and compare P95 across runs
 
 ---
 
-> **Author:** Syed Sabah Hassan — Test Automation Architect
-> 18+ years in performance engineering across Federal Government and Banking (Services Australia, NAB, ASB [CBA], ANZ).
-> Tools: JMeter · K6 · Gatling · Grafana · InfluxDB · Docker · GitHub Actions
-> sabahcomp@gmail.com
+MIT licence — free to use and adapt.
+
+*Syed Sabah Hassan · sabahcomp@gmail.com*
